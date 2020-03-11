@@ -70,43 +70,42 @@ def visulize_flow_file(flow_filename, save_dir=None):
 
 
 def flow2img(flow_data):
-	"""
-	convert optical flow into color image
-	:param flow_data:
-	:return: color image
-	"""
-	# print(flow_data.shape)
-	# print(type(flow_data))
-	u = flow_data[:, :, 0]
-	v = flow_data[:, :, 1]
+    """
+    convert optical flow into color image
+    :param flow_data:
+    :return: color image
+    """
+   
+    u = flow_data[:, :, 0]
+    v = flow_data[:, :, 1]
+   
+    UNKNOW_FLOW_THRESHOLD = 1e7
+    pr1 = abs(u) > UNKNOW_FLOW_THRESHOLD
+    pr2 = abs(v) > UNKNOW_FLOW_THRESHOLD
+    idx_unknown = (pr1 | pr2)
+    u[idx_unknown] = v[idx_unknown] = 0
 
-	UNKNOW_FLOW_THRESHOLD = 1e7
-	pr1 = abs(u) > UNKNOW_FLOW_THRESHOLD
-	pr2 = abs(v) > UNKNOW_FLOW_THRESHOLD
-	idx_unknown = (pr1 | pr2)
-	u[idx_unknown] = v[idx_unknown] = 0
+    # get max value in each direction
+    maxu = -999.
+    maxv = -999.
+    minu = 999.
+    minv = 999.
+    maxu = max(maxu, np.max(u))
+    maxv = max(maxv, np.max(v))
+    minu = min(minu, np.min(u))
+    minv = min(minv, np.min(v))
 
-	# get max value in each direction
-	maxu = -999.
-	maxv = -999.
-	minu = 999.
-	minv = 999.
-	maxu = max(maxu, np.max(u))
-	maxv = max(maxv, np.max(v))
-	minu = min(minu, np.min(u))
-	minv = min(minv, np.min(v))
+    rad = np.sqrt(u ** 2 + v ** 2)
+    maxrad = max(-1, np.max(rad))
+    u = u / maxrad + np.finfo(float).eps
+    v = v / maxrad + np.finfo(float).eps
 
-	rad = np.sqrt(u ** 2 + v ** 2)
-	maxrad = max(-1, np.max(rad))
-	u = u / maxrad + np.finfo(float).eps
-	v = v / maxrad + np.finfo(float).eps
+    img = compute_color(u, v)
 
-	img = compute_color(u, v)
+    idx = np.repeat(idx_unknown[:, :, np.newaxis], 3, axis=2)
+    img[idx] = 0
 
-	idx = np.repeat(idx_unknown[:, :, np.newaxis], 3, axis=2)
-	img[idx] = 0
-
-	return np.uint8(img)
+    return np.uint8(img)
 
 
 def compute_color(u, v):
