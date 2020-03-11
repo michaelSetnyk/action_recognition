@@ -75,10 +75,12 @@ class ImagesFromFolder(data.Dataset):
     else:
         cropper = StaticCenterCrop(image_size, self.render_size)
     images = list(map(cropper, images))
-    
+   
+    print(images)
+    print(img1.shape)
+    print(img2.shape)
     images = np.array(images).transpose(3,0,1,2)
     images = torch.from_numpy(images.astype(np.float32))
-
     return [images], [torch.zeros(images.size()[0:1] + (2,) + images.size()[-2:])]
 
   def __len__(self):

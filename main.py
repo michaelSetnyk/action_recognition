@@ -33,7 +33,7 @@ state_dict = flowNetCheckpoint["state_dict"]
 flownet2.load_state_dict(state_dict)
 flownet2.eval()
 
-test_path="run/daria"
+test_path="walk/daria"
 #Do not crop infernce images
 testset = ImagesFromFolder(args,False,test_path)
 test_loader = DataLoader(testset,batch_size=1,shuffle=False)
@@ -44,6 +44,5 @@ for batch_idx, (data, target) in enumerate(test_loader):
         data, target = [d.cuda(non_blocking=True) for d in data], [t.cuda(non_blocking=True) for t in target]
     data, target = [Variable(d) for d in data], [Variable(t) for t in target]
     with torch.no_grad():
-        print(data[0].shape)
         outputs = flownet2(data[0])
 
