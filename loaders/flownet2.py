@@ -5,6 +5,10 @@ import os, math, random
 from os.path import *
 import numpy as np
 from imageio import imread
+from torch.utils.data import DataLoader
+from flownet2.models import FlowNet2
+import cv2
+from torch.autograd import Variable
 
 from glob import glob
 
@@ -25,7 +29,7 @@ class StaticCenterCrop(object):
     def __call__(self, img):
         return img[(self.h-self.th)//2:(self.h+self.th)//2, (self.w-self.tw)//2:(self.w+self.tw)//2,:]
 
-class VideoFromFolder(data.Dataset):
+class FlowVideoFromFolder(data.Dataset):
   def __init__(self, args, is_cropped, path = '/path/to/frames/only/folder', replicates = 1):
     self.args = args
     self.is_cropped = is_cropped
@@ -70,3 +74,29 @@ class VideoFromFolder(data.Dataset):
 
   def __len__(self):
     return self.size * self.replicates
+
+def flow_images(args,path,cuda=False):
+    flowNetPath = "flownet2/FlowNet2_checkpoint.pth.tar"
+    flownet2 = FlowNet2(args).cuda()
+    flowNetCheckpoint = torch.load(flowNetPath)
+    state_dict = flowNetCheckpoint["state_dict"]
+    flownet2.load_state_dict(state_dict)
+    flownet2.eval()
+    
+    testset = FlowVideoFromFolder(args,False,path)
+    test_loader = DataLoader(testset,batch_size=1,shuffle=False)
+
+    flow_images = [] 
+    for batch_idx, (data, target) in enumerate(test_loader):
+        if cuda:
+            data, target = [d.cuda(non_blocking=True) for d in data], [t.cuda(non_blocking=True) for t in target]
+        data, target = [Variable(d) for d in data], [Variable(t) for t in target]
+        with torch.no_grad():
+            outputs = flownet2(data[0])[0].cpu().numpy()
+            flow_images.append(outputs)
+            if args.flow_vis:
+                img = flow2img(outputs)
+                cv2.imshow("image",img)
+                cv2.waitKey(0)
+    return flow_images
+
