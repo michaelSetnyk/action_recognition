@@ -27,7 +27,7 @@ args = parser.parse_args()
 args.__dict__["cuda"]= True if torch.cuda.is_available() else False
 # get flow images
 test_path = "hmdb51/dribble/10YearOldYouthBasketballStarBaller_dribble_f_cm_np1_ba_med_5.avi"
-test_path = "walk/ira_walk.avi"
+#test_path = "walk/ira_walk.avi"
 #flow_vecs = flow_images(args,test_path)
 scn_vecs = scn.features(args,test_path)
 #tcn_vecs = tcn.features(args,test_path)

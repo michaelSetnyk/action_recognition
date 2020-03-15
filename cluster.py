@@ -2,6 +2,10 @@ from numpy import dot
 from numpy.linalg import norm
 from scipy import spatial
 import numpy as np
+from sklearn.cluster import KMeans
+from sklearn.neighbors import BallTree
+
+
 '''
 Deep features of each frame
 F: F{f1,f2..fn..fN}
@@ -17,45 +21,106 @@ def CS(fsk,fi):
     result = 1 - spatial.distance.cosine(fsk, fi)
     return result 
 
-# Adaptive Video Feature Segmentation
-def AVFS(f):
-    tau = 0.85
-    Si = 0
+'''
+Adaptive Video Feature Segmentation
+C: codebook found by computing K means clustering
+Sk: The set of segments S
+S:  The set of features within an action Set = {f1..fi}
+fsk: The set of key frames 
+fski: The key frame of a set, each set has 1 key frame, this is the first frame 
 
-    # Step 1 Construct ActionS 
-    S = []
-    current_S = []
-    current_S.append(f[0])
+Steps 
+1) Compute the codebook
+2) Determine the intial actions
+3) Segmentation update 
+
+'''
+def AVFS(f):
+    k = 16
+    tau = 0.85
+    f = [fi.flatten() for fi in f]
+    # Step 1 construct the Codebook C
     
+    C = KMeans(n_clusters=k,init='k-means++',tol=0.0001).fit(f)
+    
+    # Step 2 Construct ActionS 
+    S = []
+
+    # set of indexes of key frames 
+    fsk = [0]
+
+    Si = [f[0]]
+    fski = f[0]
     # Determine if features maps from f2 to fi belong to fsk1 (S[1])
     for i in range(1,len(f)):
-        fi = np.squeeze(f[i])
-        print(fi.shape)
-        print(current_S[0][0].shape)
-
-
-
-        sim = CS(current_S[0][0],fi)
-        print(sim)
+        fi = f[i]
+        sim = CS(fski,fi)
         # end of the current action 
-        if sim >= tau:
+        if sim < tau:
             print("NEW ACTION")
-            S.append(current_S)
-            Si+=1
-            # reset actions 
-            current_S = []
-            #new feature index     
-        
-        current_S.append(fi)
+            S.append(Si)
+            Si = []
+            fski = fi
+            fsk.append(i)
+        Si.append(fi)
+    S.append(Si)
+    
+    [print(f"S[{i}] = {len(S[i])}") for i in range(len(S))]
+    # Step 3 segmentation updating 
+    for s_i, i in enumerate(fsk):
+        prev = f[i-1]
+        fi = f[i]
+
+        prev_label =  C.labels_[i-1]
+        label =  C.labels_[i]
+       
+        # Update labels
+        if (label == prev_label and s_i != len(S)):
+            # update fi to fi -1 
+            S[s_i].append(fi)
+            # remove fi from Si
+            s_a=s_i + 1
+            
+            if s_a >= len(S):
+                break
+            S[s_a].pop(0)
+            
+            # update neighbours fi + a (a is up to k)
+            a=i + 1
+            neighbors_similar = True 
+            while neighbors_similar: 
+                next_label = C.labels_[a]
+                if not S[s_a]:
+                    fsk.pop(s_a)
+                    S.pop(s_a)
+                    if s_a >= len(S):
+                        break
+                if label == next_label:
+                    S[s_i].append(f[a])
+                    S[s_a].pop(0)
+                else:
+                    neighbors_similar = False
+                a += 1
+    [print(f"S[{i}] = {len(S[i])}") for i in range(len(S))]
+    # Maybe update the fsk to make sure the feature is in the set 
 
 
-    S.append(current_S)
-    print(len(S))
+    print(fsk)
+
+'''
+Adaptive Segment Feature Sampling
+'''
+def ASFS(S,fsk):
+    for j in range(len(S)):
+        Si = S[j]
+        fski = fsk[j]
+        for i in range(len(Si)):
+            pass
 
 
-    # use the first frame of the video as the first action
-    # S1 = f1 = fsk1
+    
 
 
-    # Step ? Construct the Codebook C?
-    C = []
+
+
+
