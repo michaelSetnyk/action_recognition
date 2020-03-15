@@ -75,9 +75,67 @@ class FlowVideoFromFolder(data.Dataset):
   def __len__(self):
     return self.size * self.replicates
 
-def flow_images(args,path,cuda=False):
+
+class FlowVideoFromFrames(data.Dataset):
+  def __init__(self, args, rgb_frames, replicates = 1):
+    self.args = args
+    self.replicates = replicates
+    
+    self.frames= []
+    for i in range(len(rgb_frames)-1):
+        im1 = rgb_frames[i]
+        im2 = rgb_frames[i+1]
+        self.frames += [ [ im1, im2 ] ]
+
+    self.size = len(self.frames)
+
+  def __getitem__(self, index):
+    index = index % self.size
+
+    img1 = self.frames[index][0]
+    img2 = self.frames[index][1]
+    
+    images = [img1, img2]
+   
+    images = torch.stack(images)
+    images = images.permute(3,0, 1, 2)
+    return [images], [torch.zeros(images.size()[0:1] + (2,) + images.size()[-2:])]
+
+  def __len__(self):
+    return self.size * self.replicates
+
+def flow_from_frames(args,frames):
     flowNetPath = "flownet2/FlowNet2_checkpoint.pth.tar"
-    flownet2 = FlowNet2(args).cuda()
+    flownet2 = FlowNet2(args)
+    
+    if args.cuda:
+        flownet2.cuda()
+    
+    flowNetCheckpoint = torch.load(flowNetPath)
+    state_dict = flowNetCheckpoint["state_dict"]
+    flownet2.load_state_dict(state_dict)
+    flownet2.eval()
+    
+    testset = FlowVideoFromFrames(args,frames)
+    test_loader = DataLoader(testset,batch_size=1,shuffle=False)
+
+    flow_images = [] 
+    for batch_idx, (data, target) in enumerate(test_loader):
+        if args.cuda:
+            data, target = [d.cuda(non_blocking=True) for d in data], [t.cuda(non_blocking=True) for t in target]
+        data, target = [Variable(d) for d in data], [Variable(t) for t in target]
+        with torch.no_grad():
+            outputs = flownet2(data[0])[0]
+            flow_images.append(outputs)
+    return flow_images
+
+def flow_images(args,path):
+    flowNetPath = "flownet2/FlowNet2_checkpoint.pth.tar"
+    flownet2 = FlowNet2(args)
+    
+    if args.cuda:
+        flownet2.cuda()
+    
     flowNetCheckpoint = torch.load(flowNetPath)
     state_dict = flowNetCheckpoint["state_dict"]
     flownet2.load_state_dict(state_dict)
@@ -88,7 +146,7 @@ def flow_images(args,path,cuda=False):
 
     flow_images = [] 
     for batch_idx, (data, target) in enumerate(test_loader):
-        if cuda:
+        if args.cuda:
             data, target = [d.cuda(non_blocking=True) for d in data], [t.cuda(non_blocking=True) for t in target]
         data, target = [Variable(d) for d in data], [Variable(t) for t in target]
         with torch.no_grad():

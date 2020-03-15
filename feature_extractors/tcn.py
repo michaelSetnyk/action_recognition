@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from loaders.flownet2 import flow_images
 from loaders.tcn import TcnStacksFromFlow
 
-def features(args,path,cuda=False):
+def features(args,path):
     in_channels = 20
     base_model = torch.hub.load('pytorch/vision:v0.5.0', 'googlenet', pretrained=True)
     
@@ -29,11 +29,12 @@ def features(args,path,cuda=False):
         # remove ".weight" suffix to get the layer layer_name
     layer_name = list(container.state_dict().keys())[0][:-7]
     setattr(container, layer_name, new_conv_layer)
-    
-    tcn = container.cuda()
+   
+    if args.cuda:
+        tcn = container.cuda()
     tcn.eval()
    
-    images = flow_images(args,path,cuda=cuda)
+    images = flow_images(args,path)
     testset = TcnStacksFromFlow(images)
     test_loader = DataLoader(testset,batch_size=1,shuffle=False)
     features = []

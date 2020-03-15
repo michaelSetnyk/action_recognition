@@ -24,10 +24,9 @@ class ScnVideoFromFolder(data.Dataset):
 
   def __getitem__(self, index):
     img = self.frames[index] 
-    img = F.to_pil_image(img)
-    img = transforms.functional.resize(img,(224,224))
-    img = F.to_tensor(img).cuda()
-    return img 
+    img = img.resize_(3,224,224)
+    
+    return img.cuda() 
 
   def __len__(self):
     return len(self.frames)
