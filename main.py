@@ -12,7 +12,8 @@ from flownet2.utils.flow_utils import flow2img
 from flownet2 import models
 from feature_extractors import scn,tcn,stacn
 from loaders.flownet2 import flow_images
-from loaders.stacn import load_rgbf
+from loaders.scn import load_rgb
+from loaders.stacn import load_rgbf,load_rgbf_from_frames
 import cluster
 import cv2
 
@@ -26,11 +27,13 @@ args = parser.parse_args()
 
 args.__dict__["cuda"]= True if torch.cuda.is_available() else False
 # get flow images
-test_path = "hmdb51/dribble/10YearOldYouthBasketballStarBaller_dribble_f_cm_np1_ba_med_5.avi"
-#test_path = "walk/ira_walk.avi"
+#test_path = "hmdb51/dribble/10YearOldYouthBasketballStarBaller_dribble_f_cm_np1_ba_med_5.avi"
+test_path = "walk/ira_walk.avi"
 #flow_vecs = flow_images(args,test_path)
 scn_vecs = scn.features(args,test_path)
 #tcn_vecs = tcn.features(args,test_path)
 #stacn_vecs = stacn.features(args,test_path)
 
-cluster.AVFS(scn_vecs)
+rgb_frames = load_rgb(args,False,test_path)
+S,fsk = cluster.AVFS(scn_vecs)
+cluster.ASFS(args,rgb_frames,S,fsk)

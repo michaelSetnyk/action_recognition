@@ -28,7 +28,7 @@ def features(args,video_path):
     features = []
     for image in test_loader:
         with torch.no_grad():
-            feature = scn(image).cpu().numpy()
+            feature = scn(image).cpu().numpy().squeeze().transpose(1,2,0)
             features.append(feature)
         
     return features

@@ -96,3 +96,19 @@ def load_rgbf(args,is_cropped,path):
         frames.append(rgbf)
     return frames
 
+def load_rgbf_from_frames(args,is_cropped,rgb_frames):
+    render_size = args.inference_size
+
+    # Step 2 load the flow images 
+    flow_frames = flow_from_frames(args,rgb_frames)
+    frames = []    
+    # Step 3 create the rgbf images 
+    
+    for (index, flow_img) in enumerate(flow_frames):
+        flow_img = flow_img.cpu().numpy()  
+        mcm = MCM(flow_img)
+        rgb_img = rgb_frames[index]
+        rgbf = RGBF(rgb_img,  mcm)
+        frames.append(rgbf)
+    return frames
+

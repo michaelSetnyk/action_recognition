@@ -7,6 +7,7 @@ import numpy as np
 from imageio import imread
 from torch.utils.data import DataLoader
 from flownet2.models import FlowNet2
+from flownet2.utils.flow_utils import flow2img
 import cv2
 from torch.autograd import Variable
 
@@ -125,8 +126,12 @@ def flow_from_frames(args,frames):
             data, target = [d.cuda(non_blocking=True) for d in data], [t.cuda(non_blocking=True) for t in target]
         data, target = [Variable(d) for d in data], [Variable(t) for t in target]
         with torch.no_grad():
-            outputs = flownet2(data[0])[0]
+            outputs = flownet2(data[0])[0].cpu().numpy()
             flow_images.append(outputs)
+            if args.flow_vis:
+                img = flow2img(outputs.transpose(1,2,0)).astype(np.uint8)
+                cv2.imshow("image",img)
+                cv2.waitKey(0)
     return flow_images
 
 def flow_images(args,path):
@@ -153,7 +158,7 @@ def flow_images(args,path):
             outputs = flownet2(data[0])[0].cpu().numpy()
             flow_images.append(outputs)
             if args.flow_vis:
-                img = flow2img(outputs)
+                img = flow2img(outputs.transpose(1,2,0)).astype(np.uint8)
                 cv2.imshow("image",img)
                 cv2.waitKey(0)
     return flow_images
