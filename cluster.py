@@ -2,12 +2,14 @@ from numpy import dot
 from numpy.linalg import norm
 from scipy import spatial
 import numpy as np
+from numpy import linalg as LA
 from sklearn.cluster import KMeans
 from sklearn.neighbors import BallTree
 from loaders.flownet2 import flow_from_frames
 import torchvision.transforms.functional as F
 import torch
 import cv2
+
 '''
 Deep features of each frame
 F: F{f1,f2..fn..fN}
@@ -37,7 +39,7 @@ Steps
 3) Segmentation update 
 
 '''
-def AVFS(f):
+def AVFS(f,frames):
     print("AVFS")
     k = 8
     tau = 0.85
@@ -47,76 +49,86 @@ def AVFS(f):
     
     C = KMeans(n_clusters=k,init='k-means++',tol=0.0001).fit(ff)
     
-    # Step 2 Construct ActionS 
-    S = []
+    # Step 2 Construct ActionS,key_feature_maps,feature_maps
+    fsk = [] 
+    V = []
+    Sk = []
 
     # set of indexes of key frames 
-    fsk = [f[0]]
-    flat_fsk=[ff[0]]
-
-    Si = [f[0]]
-    fski = fsk[0]
+    fski = f[0]
     flat_fski = ff[0]
     
+    fsk.append(fski)
+    fSi = [f[0]]
+    Si = [frames[0]]
     # Determine if features maps from f2 to fi belong to fsk1 (S[1])
     for i in range(1,len(f)):
+        frame = frames[i]
         fi = f[i]
         flat_fi = ff[i]
         sim = CS(flat_fski,flat_fi)
         # end of the current action 
         if sim < tau:
             print("NEW ACTION")
-            S.append(Si)
-            Si = []
             fski = fi
             flat_fski = flat_fi
+            
+            V.append(Si)
+            Sk.append(fSi)
             fsk.append(fski)
-            flat_fsk.append(flat_fski)
+            Si = []
+            fSi = []
         Si.append(fi)
-    S.append(Si)
+        fSi.append(frame)
+    V.append(Si)
+    Sk.append(fSi)
     
-    [print(f"S[{i}] = {len(S[i])}") for i in range(len(S))]
+    [print(f"Sk[{i}] = {len(Sk[i])}") for i in range(len(Sk))]
     
     # Step 3 segmentation updating 
     # update segments around the key frames 
-    i = len(S[0])
-    for s_i in range(1,len(S)):
+    i = len(Sk[0])
+    for s_i in range(1,len(Sk)):
         prev_label = C.labels_[i-1]
-        Si = S[s_i]
+        Si = Sk[s_i]
         for j in range(len(Si)):
             index = i +j
             label = C.labels_[index]
             # Update segments 
             if label == prev_label:
                 feature_map = Si[j]
-                S[s_i-1].append(feature_map)
-                S[s_i].pop(0)
-                if not S[s_i]:
-                    S.pop(s_i)
+                Sk[s_i-1].append(feature_map)
+                Sk[s_i].pop(0)
+                if not Sk[s_i]:
+                    Sk.pop(s_i)
                     fsk.pop(s_i)
             else:
                 #make sure that the key frame exists in the actions segment
-                fsk[s_i] = S[s_i][0]
+                fsk[s_i] = Sk[s_i][0]
                 break
         # End of current set 
         i+=len(Si)
 
-    [print(f"S[{i}] = {len(S[i])}") for i in range(len(S))]
+    [print(f"Sk[{i}] = {len(Sk[i])}") for i in range(len(Sk))]
     # Maybe update the fsk to make sure the feature is in the set 
-    return S,fsk 
+    return fsk,V,Sk 
 
 '''
 Adaptive Segment Feature Sampling
-'''
-'''
-def SM(i,j):
-    fskj = fsk[j]
-    fsi_j = bilinear_warp(fsi,flow(i,j))
+j: is the key frame index 
+i: is the refrence_frame index 
 
 
-    top = exp(- mag(warped - fskj   )**2)
-    bommot_expr = exp(- mag(     - fskj)**2)
+
 '''
+def SM(i,j,warped, key_frame):
+    def expr(w,k):
+        return np.exp(- LA.norm(w - k)**2)
+
+    top = expr(warped[i],key_frame)
+    bottom = np.sum([expr(a,key_frame) for a in range(i)])
+    sim = top/bottom 
+    return sim
 
 
 '''
@@ -129,7 +141,9 @@ s_p: current_location in flow
 G: the kernel
 '''
 def warp(key_frame,flow,feature_map):
-    assert key_frame.shape == feature_map.shape and flow.shape ==(7,7,2) and feature_map.shape == (7,7,1024), "shapes do not match" 
+    assert key_frame.shape == (7,7,1024),   "key frame does not have shape (7,7,1024)"
+    assert feature_map.shape == (7,7,1024),  "feature map does not have shape (7,7,1024)"
+    assert flow.shape ==(7,7,2),             "flow does not have shape (7,7,2)" 
     def G(q,p):
         # current location in the feature map
         # s_p is each x y location in the flow map 
@@ -152,26 +166,77 @@ def warp(key_frame,flow,feature_map):
     
     return warped
 
+
+# speed up by doing flow all at once 
 def ASFS(args,rgb_frames,S,fsk):
     print("ASFS")
+    tau2 = 0.75
+    tau3 = 0.04
+
     rgb_start_index = 0
-    for s_i,Si in enumerate(S):
+    remove_indexes = [] 
+    similarties = [] 
+
+    for j,Si in enumerate(S):
+        remove_indexes.append([])
+        similarties.append([]) 
         #get the refrence rgb_frame and feature map 
-        key_frame = fsk[s_i]
+        key_frame = fsk[j]
         refrence_frame = rgb_frames[rgb_start_index]
-        for j in range(1,len(Si)):
-            frame_index = rgb_start_index + j
-            feature_map = Si[j]
-            frame = rgb_frames[rgb_start_index]
+        flow_images = [] 
+
+        for i in range(1,len(Si)):
+            frame_index = rgb_start_index + i
+            frame = rgb_frames[frame_index] 
+            flow_set = [refrence_frame,frame]
+            flow_images.extend(flow_set)
+        
+        flow = flow_from_frames(args,flow_images)
+        warped = [] 
+        for i,feature_map in enumerate(Si):
+            flow_image = flow[i].transpose(1,2,0)
+            flow_image = cv2.resize(flow_image,(7,7))
+            warped.append(warp(key_frame,flow_image,feature_map))
+            sim = SM(i,j,warped,key_frame)
             
-            flow_images = [refrence_frame,frame]
-            flow = flow_from_frames(args,flow_images)[0].transpose(1,2,0)
-            flow = cv2.resize(flow,(7,7))
-            warp(key_frame,flow,feature_map)
-            #SM(warped,refrence_frame)
-    
+            if sim > tau2:
+                print(f"TOO SIMILAR FRAME {i}")
+                #remove local feature fsi in next step
+                remove_indexes[j].append(i)
+            elif sim < tau3:
+                print("NOISY FRAME")
+                # the frame is noisy, discard the deep feature now 
+                Si.pop(i+1)
+                remove_indexes[j].append(i)
+            else:
+                similarties[j].append(sim)
+    print(remove_indexes)
+    for j_ in range(j):
+        if remove_indexes[j_]:
+            remove_indexes[j_].reverse()
+            for i in remove_indexes[j_]:
+                print(i)
+                S[j_].pop(i)
 
+    # Pool the weight for each segment
+    fvsk = [] 
+    for j,Si in enumerate(S):
+        sims = similarties[j]
+        print(len(sims),len(Si))
+        assert len(sims) == len(Si), "similarties and length of Si do not match"
 
+        avg = 1.0/(np.sum(sims))
+        w = []
+        for i in range(len(Si)):
+            fsi = Si[i]
+            s = sims[i]
+            w.append(s*fsi)
+        v = np.sum(w) * avg
+        fvsk.append(v)
+    print(fvsk)
+
+    # Now take the L2  norm 
+    LA.norm(fvsk)
 
 
 

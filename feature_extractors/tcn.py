@@ -7,10 +7,9 @@ from torch.utils.data import DataLoader
 from loaders.flownet2 import flow_images
 from loaders.tcn import TcnStacksFromFlow
 
-def features(args,path):
+def model(args):
     in_channels = 20
     base_model = torch.hub.load('pytorch/vision:v0.5.0', 'googlenet', pretrained=True)
-    
     #should actually use this but we don't have the checkpoint file
     #base_model = bninception.BNInception()
     modules = list(base_model.modules())
@@ -29,9 +28,12 @@ def features(args,path):
         # remove ".weight" suffix to get the layer layer_name
     layer_name = list(container.state_dict().keys())[0][:-7]
     setattr(container, layer_name, new_conv_layer)
-   
     if args.cuda:
         tcn = container.cuda()
+    return tcn 
+    
+def features(args,path):
+    tcn = model(args)
     tcn.eval()
    
     images = flow_images(args,path)

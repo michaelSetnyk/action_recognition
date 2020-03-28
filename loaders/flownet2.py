@@ -105,10 +105,13 @@ class FlowVideoFromFrames(data.Dataset):
   def __len__(self):
     return self.size * self.replicates
 
-def flow_from_frames(args,frames):
+def model(args):
     flowNetPath = "flownet2/FlowNet2_checkpoint.pth.tar"
     flownet2 = FlowNet2(args)
-    
+    return flownet2
+
+def flow_from_frames(args,frames):
+    flownet2 = flow_model(args) 
     if args.cuda:
         flownet2.cuda()
     

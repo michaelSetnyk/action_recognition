@@ -13,15 +13,18 @@ from loaders.flownet2 import FlowVideoFromFolder
 from loaders.scn import ScnVideoFromFolder
 from loaders.tcn import TcnStacksFromFlow
 
+def model(args):
+    base_model = torch.hub.load('pytorch/vision:v0.5.0', 'googlenet', pretrained=True)
+    scn = torch.nn.Sequential(*(list(base_model.children())[:-3]))
+    return scn
 # get scn features  
 def features(args,video_path):
-    model = torch.hub.load('pytorch/vision:v0.5.0', 'googlenet', pretrained=True)
-    
+    scn = model(args) 
+
     if  args.cuda:
-        model.cuda()
+        scn.cuda()
     
-    model.eval()
-    scn = torch.nn.Sequential(*(list(model.children())[:-3]))
+    scn.eval()
     
     testset = ScnVideoFromFolder(args,video_path)
     test_loader = DataLoader(testset,batch_size=1,shuffle=False)
