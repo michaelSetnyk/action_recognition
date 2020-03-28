@@ -17,6 +17,7 @@ from imageio import imread
 from torch.autograd import Variable
 from sklearn.cluster import KMeans
 
+from scipy import spatial
 from glob import glob
 
 class StaticCenterCrop(object):
@@ -63,22 +64,26 @@ def predict(args,video_path):
     model = ActionS(args)
     for video in test_loader:
         with torch.no_grad():
-            model(video).cpu()
+            model(video.cuda()).cpu()
         
 class ActionS(torch.nn.Module):
     def __init__(self,args):
         super(ActionS,self).__init__()
+        self.args = args
         self.scn = scn.model(args)
         self.flownet2 = flownet2.model(args)
         if args.cuda:
             self.flownet2.cuda()
+            self.scn.cuda()
         self.flownet2.eval()
-        self.args = args
+        self.scn.eval()
         #self.tcn = tcn.model(args)
         #self.stacn = stacn.model(args)
 
     def forward(self,inputs):
+
         inputs = torch.squeeze(inputs)
+        self.frames = inputs
         #Precompute the flow 
         #f = self._precompute_flow(inputs)
         
@@ -87,12 +92,96 @@ class ActionS(torch.nn.Module):
         return spatio_features
 
 
+    def _CS(self,fsk,fi):
+        result = 1 - spatial.distance.cosine(fsk, fi)
+        return result 
+    
+    '''
+    Can probably convert this into a pure PyTorch implementation
+
+    Adaptive Video Feature Segmentation
+    C: codebook found by computing K means clustering
+    Sk: The set of segments S
+    S:  The set of features within an action Set = {f1..fi}
+    fsk: The set of key frames 
+    fski: The key frame of a set, each set has 1 key frame, this is the first frame 
+
+    Steps 
+    1) Compute the codebook
+    2) Determine the intial actions
+    3) Segmentation update 
+    '''
     def _avfs(self,features):
+        tau  = 0.85
         k = 8
         flat_features = [f.flatten() for f in features.cpu().numpy()]
         # Step 1 construct the Codebook C
     
         C = KMeans(n_clusters=k,init='k-means++',tol=0.0001).fit(flat_features)
+    
+        # Step 2 Construct ActionS,key_feature_maps,feature_maps
+        fsk = [] 
+        V = []
+        Sk = []
+
+        # set of indexes of key frames 
+        fski = features[0]
+        flat_fski = flat_features[0]
+        fsk.append(fski)
+        fSi = [features[0]]
+        Si = [self.frames[0]]
+        
+        # Determine if features maps from f2 to fi belong to fsk1 (S[1])
+        for i in range(1,len(features)):
+            frame = self.frames[i]
+            fi = features[i]
+            flat_fi = flat_features[i]
+            sim = self._CS(flat_fski,flat_fi)
+            # end of the current action 
+            if sim < tau:
+                print("NEW ACTION")
+                fski = fi
+                flat_fski = flat_fi
+            
+                V.append(Si)
+                Sk.append(fSi)
+                fsk.append(fski)
+                Si = []
+                fSi = []
+            Si.append(fi)
+            fSi.append(frame)
+        V.append(Si)
+        Sk.append(fSi)
+    
+        [print(f"Sk[{i}] = {len(Sk[i])}") for i in range(len(Sk))]
+    
+        # Step 3 segmentation updating 
+        # update segments around the key frames 
+        i = len(Sk[0])
+        for s_i in range(1,len(Sk)):
+            prev_label = C.labels_[i-1]
+            Si = Sk[s_i]
+            for j in range(len(Si)):
+                index = i +j
+                label = C.labels_[index]
+                # Update segments 
+                if label == prev_label:
+                    feature_map = Si[j]
+                    Sk[s_i-1].append(feature_map)
+                    Sk[s_i].pop(0)
+                    if not Sk[s_i]:
+                        Sk.pop(s_i)
+                        fsk.pop(s_i)
+                else:
+                    #make sure that the key frame exists in the actions segment
+                    fsk[s_i] = Sk[s_i][0]
+                    break
+            # End of current set 
+            i+=len(Si)
+
+        [print(f"Sk[{i}] = {len(Sk[i])}") for i in range(len(Sk))]
+        # Maybe update the fsk to make sure the feature is in the set 
+        return fsk,V,Sk 
 
 
 
