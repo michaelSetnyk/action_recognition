@@ -16,6 +16,9 @@ from loaders.scn import load_rgb
 from loaders.stacn import load_rgbf,load_rgbf_from_frames
 from ours import predict
 import cv2
+from torchvision.io import read_video
+from torchvision.datasets.video_utils import VideoClips
+import imageio
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--fp16', action='store_true', help='Run model in pseudo-fp16 mode (fp16 storage fp32 math).')
@@ -26,6 +29,8 @@ parser.add_argument('--flow_vis', action='store_true', help='display flow')
 args = parser.parse_args()      
 
 args.__dict__["cuda"]= True if torch.cuda.is_available() else False
+print(args.cuda)
 # get flow images
 test_path = "hmdb51/dribble/10YearOldYouthBasketballStarBaller_dribble_f_cm_np1_ba_med_5.avi"
+
 predict(args,test_path)

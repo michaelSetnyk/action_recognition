@@ -70,7 +70,9 @@ class FlowVideoFromFolder(data.Dataset):
     images = list(map(cropper, images))
    
     images = torch.stack(images)
+    #print("stacked",images.shape)
     images = images.permute(3,0, 1, 2)
+    #print("permuted",images.shape)
     return [images], [torch.zeros(images.size()[0:1] + (2,) + images.size()[-2:])]
 
   def __len__(self):
@@ -158,7 +160,9 @@ def flow_images(args,path):
             data, target = [d.cuda(non_blocking=True) for d in data], [t.cuda(non_blocking=True) for t in target]
         data, target = [Variable(d) for d in data], [Variable(t) for t in target]
         with torch.no_grad():
-            outputs = flownet2(data[0])[0].cpu().numpy()
+            inp = data[0]
+            print(inp.shape)
+            outputs = flownet2(inp)[0].cpu().numpy()
             flow_images.append(outputs)
             if args.flow_vis:
                 img = flow2img(outputs.transpose(1,2,0)).astype(np.uint8)
